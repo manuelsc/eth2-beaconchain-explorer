@@ -161,11 +161,12 @@ class Calculator {
 			["totalStakeMonthlyChange", function(v) { return v * 100 }, function(v) {return parseFloat(v) / 100}, true, function(value){ document.getElementById('staking-variable-totalStakeMonthlyChange').setAttribute('value', value) }],
 		]
 
-		
+		var watchlistHistory = {{.WatchlistBalanceHistory}}
 		this.params = {}
 		// this.params.url = {}
 		
-		this.params.stake = 0
+		this.params.stake =  0 
+
 		this.params.currency = "USD"
 		this.params.price = 0
 		this.params.priceChangePerMonth = 0
@@ -192,6 +193,11 @@ class Calculator {
 		this.result.breakEvenPoint = null
 		this.result.start = null
 		this.result.numberOfPossibleValidators = '0'
+		this.result.watchlistPastEarningsData = watchlistHistory 
+
+		if (watchlistHistory && watchlistHistory.length) {
+		  document.getElementById('staking-variable-yourStake').setAttribute('value', watchlistHistory[watchlistHistory.length - 1][1])
+		}
 
 		this.fetchStats().then(() => {
 			this.readUrlSearchParams()
@@ -326,11 +332,9 @@ class Calculator {
 		var t2 = Date.now()
 		this.renderResult()
 		var t3 = Date.now()
-// 		console.log(`readParams  : ${t1-t0}ms
 // calculate   : ${t2-t1}ms
 // renderResult: ${t3-t2}ms
 // `)
-// 		console.log(this.params)
 	}
 	readParams() {
 
@@ -463,6 +467,8 @@ class Calculator {
 
 		var now = Date.now()
 		var yourStake = this.params.stake
+		var showWatchlist = true
+
 		var incomeGwei = this.params.stake
 		var incomeDollar = incomeGwei*price / 1e9
 		var incomeAll = 0
@@ -471,7 +477,7 @@ class Calculator {
 
 		this.fillChartData(now, incomeDollar, costs, price)
 		// this.fillEarningChartData(now, incomeDollar, costs, price)
-
+    
 		for (var i=0; i < epochsPerYear; i++) {
 			var threshold = Math.max(4, Math.floor((totalStake / valStake | 0) / Math.pow(2, 16)))
 		  var maxStakeGrowth = threshold * valStake
@@ -524,7 +530,6 @@ class Calculator {
 		// t, incomeDollar / price, incomeDollar, costsDollar
 		var income = incomeDollar  - this.params.stake * price/1e9
 		this.result.incomeChartData.push({ x: t, y: incomeDollar / price, income: incomeDollar, cost: costsDollar })
-
 		this.result.incomeDollarChartData.push([t, income])
 		this.result.incomeEthChartData.push([t,incomeDollar / price])
 		this.result.costsDollarChartData.push([t,costsDollar])
@@ -567,8 +572,6 @@ class Calculator {
 		document.getElementById('return31d').innerHTML = `${symbol}${formatNumberSpacing(this.result.profitDollarChartData[31][1].toFixed(2))}`
 		document.getElementById('return365d').innerHTML = `${symbol}${formatNumberSpacing(this.result.profitDollarChartData[365][1].toFixed(2))}`
 
-		
-
 		document.getElementById('roi1d').innerText = `${(this.result.profitDollarChartData[1][1]/(this.params.stake * this.params.price / 1e9) * 100).toFixed(2)} %`
 		document.getElementById('roi7d').innerText = `${(this.result.profitDollarChartData[7][1]/(this.params.stake * this.params.price / 1e9) * 100).toFixed(2)} %`
 		document.getElementById('roi31d').innerText = `${(this.result.profitDollarChartData[31][1]/(this.params.stake * this.params.price / 1e9) * 100).toFixed(2)} %`
@@ -579,8 +582,6 @@ class Calculator {
 		} else {
 			document.getElementById('validator-count').innerText = 	this.result.numberOfPossibleValidators + ' validators'
 		}
-
-
 
 		var stakeOptions = {
 			title: { 
@@ -601,19 +602,22 @@ class Calculator {
 			navigator: { enabled: false },
 			rangeSelector: { enabled: false },
 			scrollbar: { enabled: false },
-		
 		}
+			var stakeSeriesData = this.result.watchlistPastEarningsData.map(function(entry) {
+				return {x: entry[0], y: entry[1], income: 0, cost: 0}
+			}).concat(this.result.incomeChartData)
+
 		stakeOptions.series.push({
 			name: 'Stake',
+			turboThreshold: 5000,
 			color: 'var(--blue, blue)',
-			data: this.result.incomeChartData,
+			data: stakeSeriesData, 
 			tooltip: {
 				pointFormatter: function() {
 					return `<span style="color:${this.color}">●</span> ${this.series.name} <b>${this.y.toFixed(3)} ETH </b>(${symbol}${formatNumberSpacing(this.options.income.toFixed(2))})<br>`
 				}
 			}
 		})
-
 
 		var chartStake = Highcharts.stockChart('stakeChart', stakeOptions)
 		
@@ -887,6 +891,9 @@ td,th {
 					</button>
 			</div>
 		<div id="stakeChart" class="card my-3"></div>
+		{{ if len .WatchlistBalanceHistory }}
+		 <div id="pastStakeChart" class="card my-3"></div>
+		{{end}}
 		<div id="breakEvenChart" class="card my-3"></div>
 		<div class="card my-3 table-responsive">
 			<table class="table p-0">

@@ -17,6 +17,68 @@ var stakingCalculatorTemplate = template.Must(template.New("calculator").Funcs(u
 // StakingCalculator renders stakingCalculatorTemplate
 func StakingCalculator(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
+	stakingCalculatorPageData := types.StakingCalculatorPageData{}
+	user := getUser(w, r)
+
+	if user.Authenticated {
+		watchlistBalanceHistory := []types.ValidatorBalanceHistory{}
+
+		err := db.DB.Select(&watchlistBalanceHistory, `
+		SELECT epoch, CAST(sum(balance) AS bigint) as balance
+		FROM 
+			validator_balances
+		 WHERE 
+			 validatorindex  IN 
+		(
+			SELECT 
+			  validators.validatorindex as index
+			FROM 
+			  users_validators_tags
+			INNER JOIN
+			  validators
+			ON
+			  validators.pubkey = users_validators_tags.validator_publickey
+			WHERE user_id = $1 and tag = $2
+		)
+			GROUP BY epoch
+			ORDER BY epoch ASC; 
+		`, user.UserID, types.ValidatorTagsWatchlist)
+		if err != nil {
+			logger.Errorf("error retrieving watchlist balance history data:", err)
+			http.Error(w, "Internal server error", 503)
+			return
+		}
+
+		watchlsitBalanceHistoryData := make([][]interface{}, 0, len(watchlistBalanceHistory))
+		for _, entry := range watchlistBalanceHistory {
+			watchlsitBalanceHistoryData = append(watchlsitBalanceHistoryData, []interface{}{
+				utils.EpochToTime(entry.Epoch).Unix() * 1000,
+				float64(entry.Balance) / 1e9,
+			})
+		}
+
+		stakingCalculatorPageData.WatchlistBalanceHistory = watchlsitBalanceHistoryData
+
+		bestValidatorHistory := []types.ValidatorBalanceHistory{}
+		// best performing validator
+		err = db.DB.Select(&bestValidatorHistory, `
+			SELECT epoch, balance 
+			FROM validator_balances
+			WHERE validatorindex =
+			(SELECT validatorindex
+				FROM validator_balances
+				ORDER BY balance DESC
+				LIMIT 1)
+		`)
+		if err != nil {
+			logger.Errorf("error retrieving best validator history data:", err)
+			http.Error(w, "Internal server error", 503)
+			return
+		}
+
+		stakingCalculatorPageData.BestValidatorBalanceHistory = &bestValidatorHistory
+	}
+
 	stakingCalculatorTemplate = template.Must(template.New("calculator").Funcs(utils.GetTemplateFuncs()).ParseFiles("templates/layout.html", "templates/calculator.html"))
 	data := &types.PageData{
 		HeaderAd: true,
@@ -28,7 +90,7 @@ func StakingCalculator(w http.ResponseWriter, r *http.Request) {
 		},
 		ShowSyncingMessage:    services.IsSyncing(),
 		Active:                "stats",
-		Data:                  nil,
+		Data:                  stakingCalculatorPageData,
 		User:                  getUser(w, r),
 		Version:               version.Version,
 		ChainSlotsPerEpoch:    utils.Config.Chain.SlotsPerEpoch,
