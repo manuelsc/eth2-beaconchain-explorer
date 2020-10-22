@@ -67,6 +67,12 @@ func main() {
 			logrus.Fatalf("invalid note type %v specified. supported node types are prysm and lighthouse", utils.Config.Indexer.Node.Type)
 		}
 
+		for _, epoch := range cfg.OneTimeExport.Epochs {
+			err := exporter.ExportEpoch(epoch, rpcClient)
+			if err != nil {
+				logrus.Fatal(err)
+			}
+		}
 		for epoch := cfg.OneTimeExport.StartEpoch; epoch <= cfg.OneTimeExport.EndEpoch; epoch++ {
 			err := exporter.ExportEpoch(epoch, rpcClient)
 			if err != nil {
